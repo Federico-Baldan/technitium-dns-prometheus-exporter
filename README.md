@@ -142,7 +142,7 @@ scrape_configs:
 
 ## Features
 
-> ⚠️ **Important:** DNS traffic metrics are *window-based snapshots*, not lifetime counters.  
+> ⚠️ **Important:** Due to how Technitium DNS currently exposes data - DNS traffic metrics are *window-based snapshots*, not lifetime counters.  
 > They reflect Technitium’s current dashboard statistics window (`TECHNITIUM_STATS_RANGE` — e.g., `LastHour`, `LastDay`, `LastWeek`).  
 > Values may increase or decrease over time as the window slides.
 
@@ -270,7 +270,7 @@ dropped
 
 ## Accompanying Grafana dashboard
 
-Available in [repo](grafana/technitium-dns-exporter-grafana-dashboard.png).
+Available in [repo](grafana/technitium-dns-grafana-dashboard.json) and [Grafana dashboards](https://grafana.com/grafana/dashboards/24555-technitium-dns-exporter/).
 
 ![Technitium DNS Grafana dashboard](grafana/technitium-dns-exporter-grafana-dashboard.png)
 
