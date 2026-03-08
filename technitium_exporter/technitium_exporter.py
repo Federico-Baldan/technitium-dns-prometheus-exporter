@@ -2,7 +2,7 @@
 import logging
 import os
 import time
-from typing import Any, Dict, Iterator, Optional
+from typing import Any, Dict, Iterator, Optional, List
 import requests
 import urllib3
 from prometheus_client import core, start_http_server
@@ -26,34 +26,39 @@ TECHNITIUM_TOP_LIMIT = int(os.getenv("TECHNITIUM_TOP_LIMIT", "50"))
 EXPORTER_PORT = int(os.getenv("EXPORTER_PORT", "9105"))
 TECHNITIUM_VERIFY_SSL = os.getenv("TECHNITIUM_VERIFY_SSL", "true").lower() == "true"
 
-# Optional: For identifying this specific Technitium instance in Grafana
-SERVER_LABEL = os.getenv("SERVER_LABEL", "technitium")
-# Optional: If using Technitium Clustering, specify which node to query
-TECHNITIUM_NODE = os.getenv("TECHNITIUM_NODE", "")
+# CLUSTERING CONFIG
+# Pass a comma-separated list of nodes: e.g. "primary,node-01,node-02"
+# If empty, defaults to a single "local" scrape without the ?node= param.
+raw_nodes = os.getenv("TECHNITIUM_NODES", "")
+TECHNITIUM_NODES = (
+    [n.strip() for n in raw_nodes.split(",")] if raw_nodes.strip() else []
+)
 
-# Suppress insecure request warnings if SSL verify is disabled
+# Fallback for single server setups using the old env var
+SERVER_LABEL_DEFAULT = os.getenv("SERVER_LABEL", "technitium")
+
 if not TECHNITIUM_VERIFY_SSL:
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
-# Inherit from Collector to satisfy type-checker
 class TechnitiumCollector(Collector):
     def __init__(self):
         self.session = requests.Session()
-        self.session.headers.update({"User-Agent": "TechnitiumPrometheusExporter/2.4"})
-        # Apply SSL verification setting globally to the session
+        self.session.headers.update({"User-Agent": "TechnitiumPrometheusExporter/2.5"})
         self.session.verify = TECHNITIUM_VERIFY_SSL
 
     def _call_api(
-        self, endpoint: str, params: Optional[Dict[str, Any]] = None
+        self,
+        endpoint: str,
+        node: Optional[str],
+        params: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Generic helper to handle API calls and errors."""
         url = f"{TECHNITIUM_BASE_URL}{endpoint}"
         default_params = {"token": TECHNITIUM_TOKEN}
 
-        # Add Node parameter if configured (for clustering)
-        if TECHNITIUM_NODE:
-            default_params["node"] = TECHNITIUM_NODE
+        # If a node is specified (Clustering), add it to params
+        if node:
+            default_params["node"] = node
 
         if params:
             default_params.update(params)
@@ -63,232 +68,230 @@ class TechnitiumCollector(Collector):
             resp.raise_for_status()
             data = resp.json()
             if data.get("status") != "ok":
-                logger.error("Technitium API returned non-ok status for %s", endpoint)
+                logger.error(
+                    f"Error from node '{node or 'local'}': {data.get('errorMessage')}"
+                )
                 return {}
             return data.get("response", {})
         except Exception as e:
-            # Sanitize the token from the error message
-            error_msg = str(e)
-            if TECHNITIUM_TOKEN and len(TECHNITIUM_TOKEN) > 0:
-                error_msg = error_msg.replace(TECHNITIUM_TOKEN, "REDACTED")
-
-            logger.error("Request Failed [%s]: %s", endpoint, error_msg)
+            error_msg = (
+                str(e).replace(TECHNITIUM_TOKEN, "REDACTED")
+                if TECHNITIUM_TOKEN
+                else str(e)
+            )
+            logger.error(
+                f"Request Failed [{node or 'local'} - {endpoint}]: {error_msg}"
+            )
             return {}
 
     def collect(self) -> Iterator[core.Metric]:
         start_t = time.time()
 
-        # -------------------------------------------------------------------
-        # 1. Dashboard Stats
-        # -------------------------------------------------------------------
-        stats_data = self._call_api(
-            "/api/dashboard/stats/get",
-            {"type": TECHNITIUM_STATS_RANGE, "utc": "true"},
-        )
-        stats = stats_data.get("stats", {})
+        # Determine which nodes to scrape.
+        # If TECHNITIUM_NODES is empty, we scrape "None" (local instance) and use SERVER_LABEL_DEFAULT
+        targets = TECHNITIUM_NODES if TECHNITIUM_NODES else [None]
 
-        # UP Metric
+        # Prepare Metric Families (We create them once, then populate with samples from all nodes)
         g_up = GaugeMetricFamily(
             "technitium_up", "Technitium API reachable", labels=["server"]
         )
-        g_up.add_metric([SERVER_LABEL], 1.0 if stats else 0.0)
-        yield g_up
 
-        if stats:
-            # Simple Gauges
-            simple_map = {
-                "technitium_dns_clients_window": "totalClients",
-                "technitium_dns_zones": "zones",
-                "technitium_dns_cached_entries": "cachedEntries",
-                "technitium_dns_allowed_zones": "allowedZones",
-                "technitium_dns_blocked_zones": "blockedZones",
-                "technitium_dns_allowlist_zones": "allowListZones",
-                "technitium_dns_blocklist_zones": "blockListZones",
-            }
-            for metric, key in simple_map.items():
-                g = GaugeMetricFamily(
-                    metric, f"From Dashboard Stats: {key}", labels=["server"]
-                )
-                g.add_metric([SERVER_LABEL], float(stats.get(key, 0)))
-                yield g
+        # Dashboard Stats Metrics
+        simple_metrics = {
+            "technitium_dns_clients_window": ("totalClients", "Unique Clients"),
+            "technitium_dns_zones": ("zones", "Total Zones"),
+            "technitium_dns_cached_entries": ("cachedEntries", "Cache Entries"),
+            "technitium_dns_allowed_zones": ("allowedZones", "Allowed Zones"),
+            "technitium_dns_blocked_zones": ("blockedZones", "Blocked Zones"),
+            "technitium_dns_allowlist_zones": ("allowListZones", "Allow List Zones"),
+            "technitium_dns_blocklist_zones": ("blockListZones", "Block List Zones"),
+        }
 
-            # Query Counters (window-scoped snapshot)
-            q_metric = GaugeMetricFamily(
-                "technitium_dns_queries_window",
-                "Queries by result category in the current stats window",
-                labels=["server", "category"],
+        g_families = {}
+        for m_name, (key, desc) in simple_metrics.items():
+            g_families[m_name] = GaugeMetricFamily(
+                m_name, f"From Dashboard Stats: {desc}", labels=["server"]
             )
-            q_map = {
-                "totalQueries": "all",
-                "totalNoError": "no_error",
-                "totalServerFailure": "servfail",
-                "totalNxDomain": "nxdomain",
-                "totalRefused": "refused",
-                "totalAuthoritative": "authoritative",
-                "totalRecursive": "recursive",
-                "totalCached": "cached",
-                "totalBlocked": "blocked",
-                "totalDropped": "dropped",
-            }
-            for key, label in q_map.items():
-                q_metric.add_metric([SERVER_LABEL, label], float(stats.get(key, 0)))
-            yield q_metric
 
-            # Charts: Response Type
-            resp_chart = stats_data.get("queryResponseChartData", {})
-            if resp_chart and resp_chart.get("datasets"):
-                resp_metric = GaugeMetricFamily(
-                    "technitium_dns_response_type_total",
-                    "Response types in the current stats window",
-                    labels=["server", "type"],
-                )
-                labels = resp_chart.get("labels", [])
-                data = resp_chart["datasets"][0].get("data", [])
-                for label, val in zip(labels, data):
-                    resp_metric.add_metric([SERVER_LABEL, label], float(val))
-                yield resp_metric
-
-            # Charts: Query Type
-            type_chart = stats_data.get("queryTypeChartData", {})
-            if type_chart and type_chart.get("datasets"):
-                type_metric = GaugeMetricFamily(
-                    "technitium_dns_query_type_total",
-                    "DNS query types in the current stats window",
-                    labels=["server", "qtype"],
-                )
-                labels = type_chart.get("labels", [])
-                data = type_chart["datasets"][0].get("data", [])
-                for label, val in zip(labels, data):
-                    type_metric.add_metric([SERVER_LABEL, label], float(val))
-                yield type_metric
-
-            # Charts: Protocol
-            proto_chart = stats_data.get("protocolTypeChartData", {})
-            if proto_chart and proto_chart.get("datasets"):
-                proto_metric = GaugeMetricFamily(
-                    "technitium_dns_protocol_queries",
-                    "Queries by protocol in the current stats window",
-                    labels=["server", "protocol"],
-                )
-                labels = proto_chart.get("labels", [])
-                data = proto_chart["datasets"][0].get("data", [])
-                for label, val in zip(labels, data):
-                    proto_metric.add_metric([SERVER_LABEL, label], float(val))
-                yield proto_metric
-
-        # -------------------------------------------------------------------
-        # 2. Zone Health
-        # -------------------------------------------------------------------
-        zones_data = self._call_api(
-            "/api/zones/list", {"pageNumber": 1, "pageSize": 1000}
+        q_metric = GaugeMetricFamily(
+            "technitium_dns_queries_window",
+            "Queries by result category",
+            labels=["server", "category"],
         )
-        zones_list = zones_data.get("zones", [])
-        if zones_list:
-            z_info = InfoMetricFamily(
-                "technitium_zone",
-                "Zone detailed information",
-                labels=["server", "zone", "type", "disabled", "internal"],
+        resp_metric = GaugeMetricFamily(
+            "technitium_dns_response_type_total",
+            "Response types",
+            labels=["server", "type"],
+        )
+        type_metric = GaugeMetricFamily(
+            "technitium_dns_query_type_total",
+            "DNS query types",
+            labels=["server", "qtype"],
+        )
+        proto_metric = GaugeMetricFamily(
+            "technitium_dns_protocol_queries",
+            "Queries by protocol",
+            labels=["server", "protocol"],
+        )
+
+        z_info = InfoMetricFamily(
+            "technitium_zone",
+            "Zone detailed information",
+            labels=["server", "zone", "type", "disabled", "internal"],
+        )
+        dhcp_lease_metric = GaugeMetricFamily(
+            "technitium_dhcp_leases_total",
+            "Active DHCP leases",
+            labels=["server", "scope", "type"],
+        )
+
+        # Top Stats Metrics
+        top_metrics = {
+            "TopClients": GaugeMetricFamily(
+                "technitium_dns_top_client_hits",
+                "Hits for TopClients",
+                labels=["server", "client_ip", "client_name"],
+            ),
+            "TopDomains": GaugeMetricFamily(
+                "technitium_dns_top_domain_hits",
+                "Hits for TopDomains",
+                labels=["server", "domain"],
+            ),
+            "TopBlockedDomains": GaugeMetricFamily(
+                "technitium_dns_top_blocked_domain_hits",
+                "Hits for TopBlockedDomains",
+                labels=["server", "domain"],
+            ),
+        }
+
+        # Loop through every node (or the single local instance)
+        for node in targets:
+            # If node is None, use default label. If node is string, use it as the label.
+            server_label = node if node else SERVER_LABEL_DEFAULT
+
+            # 1. Dashboard Stats
+            stats_data = self._call_api(
+                "/api/dashboard/stats/get",
+                node,
+                {"type": TECHNITIUM_STATS_RANGE, "utc": "true"},
             )
-            for zone in zones_list:
+            stats = stats_data.get("stats", {})
+
+            # UP STATUS
+            g_up.add_metric([server_label], 1.0 if stats else 0.0)
+
+            if stats:
+                for m_name, (key, _) in simple_metrics.items():
+                    g_families[m_name].add_metric(
+                        [server_label], float(stats.get(key, 0))
+                    )
+
+                # Query Counters
+                q_map = {
+                    "totalQueries": "all",
+                    "totalNoError": "no_error",
+                    "totalServerFailure": "servfail",
+                    "totalNxDomain": "nxdomain",
+                    "totalRefused": "refused",
+                    "totalAuthoritative": "authoritative",
+                    "totalRecursive": "recursive",
+                    "totalCached": "cached",
+                    "totalBlocked": "blocked",
+                    "totalDropped": "dropped",
+                }
+                for key, cat in q_map.items():
+                    q_metric.add_metric([server_label, cat], float(stats.get(key, 0)))
+
+                # Charts Processing Helper
+                def process_chart(chart_key, metric_obj, label_key):
+                    chart = stats_data.get(chart_key, {})
+                    if chart and chart.get("datasets"):
+                        labels = chart.get("labels", [])
+                        data = chart["datasets"][0].get("data", [])
+                        for l, v in zip(labels, data):
+                            metric_obj.add_metric([server_label, l], float(v))
+
+                process_chart("queryResponseChartData", resp_metric, "type")
+                process_chart("queryTypeChartData", type_metric, "qtype")
+                process_chart("protocolTypeChartData", proto_metric, "protocol")
+
+            # 2. Zone Health
+            zones_data = self._call_api(
+                "/api/zones/list", node, {"pageNumber": 1, "pageSize": 1000}
+            )
+            for zone in zones_data.get("zones", []):
                 z_info.add_metric(
                     [
-                        SERVER_LABEL,
-                        zone.get("name", "unknown"),
-                        zone.get("type", "unknown"),
+                        server_label,
+                        zone.get("name", ""),
+                        zone.get("type", ""),
                         str(zone.get("disabled", False)).lower(),
                         str(zone.get("internal", False)).lower(),
                     ],
                     {"serial": str(zone.get("soaSerial", 0))},
                 )
-            yield z_info
 
-        # -------------------------------------------------------------------
-        # 3. DHCP Stats
-        # -------------------------------------------------------------------
-        dhcp_leases_data = self._call_api("/api/dhcp/leases/list")
-        leases = dhcp_leases_data.get("leases", [])
-        if leases:
-            counts: Dict[str, Dict[str, int]] = {}
-            for lease in leases:
-                scope = lease.get("scope", "unknown")
-                ltype = lease.get("type", "Unknown")
-                if scope not in counts:
-                    counts[scope] = {}
-                counts[scope][ltype] = counts[scope].get(ltype, 0) + 1
-
-            dhcp_lease_metric = GaugeMetricFamily(
-                "technitium_dhcp_leases_total",
-                "Number of DHCP leases by scope and type",
-                labels=["server", "scope", "type"],
-            )
-            for scope, type_map in counts.items():
-                for ltype, count in type_map.items():
+            # 3. DHCP
+            dhcp_data = self._call_api("/api/dhcp/leases/list", node)
+            leases = dhcp_data.get("leases", [])
+            if leases:
+                counts = {}  # (scope, type) -> count
+                for lease in leases:
+                    k = (lease.get("scope", "unknown"), lease.get("type", "Unknown"))
+                    counts[k] = counts.get(k, 0) + 1
+                for (scope, ltype), count in counts.items():
                     dhcp_lease_metric.add_metric(
-                        [SERVER_LABEL, scope, ltype],
-                        float(count),
+                        [server_label, scope, ltype], float(count)
                     )
-            yield dhcp_lease_metric
 
-        # -------------------------------------------------------------------
-        # 4. Top Stats
-        # -------------------------------------------------------------------
-        for stats_type, metric_name, labels, json_key in [
-            (
-                "TopClients",
-                "technitium_dns_top_client_hits",
-                ["server", "client_ip", "client_name"],
-                "topClients",
-            ),
-            (
-                "TopDomains",
-                "technitium_dns_top_domain_hits",
-                ["server", "domain"],
-                "topDomains",
-            ),
-            (
-                "TopBlockedDomains",
-                "technitium_dns_top_blocked_domain_hits",
-                ["server", "domain"],
-                "topBlockedDomains",
-            ),
-        ]:
-            try:
-                data = self._call_api(
-                    "/api/dashboard/stats/getTop",
-                    {"statsType": stats_type, "limit": TECHNITIUM_TOP_LIMIT},
-                )
-                items = data.get(json_key, [])
-                if items:
-                    m = GaugeMetricFamily(
-                        metric_name, f"Hits for {stats_type}", labels=labels
+            # 4. Top Stats
+            for stats_type, json_key in [
+                ("TopClients", "topClients"),
+                ("TopDomains", "topDomains"),
+                ("TopBlockedDomains", "topBlockedDomains"),
+            ]:
+                try:
+                    data = self._call_api(
+                        "/api/dashboard/stats/getTop",
+                        node,
+                        {"statsType": stats_type, "limit": TECHNITIUM_TOP_LIMIT},
                     )
-                    for item in items:
+                    for item in data.get(json_key, []):
                         if stats_type == "TopClients":
-                            l_vals = [
-                                SERVER_LABEL,
-                                item.get("name", ""),
-                                item.get("domain", ""),
-                            ]
+                            top_metrics[stats_type].add_metric(
+                                [
+                                    server_label,
+                                    item.get("name", ""),
+                                    item.get("domain", ""),
+                                ],
+                                float(item.get("hits", 0)),
+                            )
                         else:
-                            l_vals = [SERVER_LABEL, item.get("name", "")]
-                        m.add_metric(l_vals, float(item.get("hits", 0)))
-                    yield m
-            except Exception as e:
-                # Token redacting logic
-                error_msg = str(e)
-                if TECHNITIUM_TOKEN and len(TECHNITIUM_TOKEN) > 0:
-                    error_msg = error_msg.replace(TECHNITIUM_TOKEN, "REDACTED")
-                logger.error("Failed to scrape %s: %s", stats_type, error_msg)
+                            top_metrics[stats_type].add_metric(
+                                [server_label, item.get("name", "")],
+                                float(item.get("hits", 0)),
+                            )
+                except:
+                    pass
 
-        # -------------------------------------------------------------------
-        # 5. Scrape Duration
-        # -------------------------------------------------------------------
+        # Yield all collected metrics
+        yield g_up
+        for m in g_families.values():
+            yield m
+        yield q_metric
+        yield resp_metric
+        yield type_metric
+        yield proto_metric
+        yield z_info
+        yield dhcp_lease_metric
+        for m in top_metrics.values():
+            yield m
+
+        # Scrape Duration
         g_dur = GaugeMetricFamily(
-            "technitium_scrape_duration_seconds",
-            "Exporter scrape duration",
-            labels=["server"],
+            "technitium_scrape_duration_seconds", "Exporter scrape duration", labels=[]
         )
-        g_dur.add_metric([SERVER_LABEL], time.time() - start_t)
+        g_dur.add_metric([], time.time() - start_t)
         yield g_dur
 
 
@@ -297,11 +300,15 @@ if __name__ == "__main__":
         logger.error("TECHNITIUM_TOKEN is required.")
         exit(1)
 
-    logger.info(
-        "Starting Technitium exporter on port %d (Server Label: %s)",
-        EXPORTER_PORT,
-        SERVER_LABEL,
-    )
+    if TECHNITIUM_NODES:
+        logger.info(
+            f"Starting Cluster Exporter on port {EXPORTER_PORT}. Monitoring nodes: {TECHNITIUM_NODES}"
+        )
+    else:
+        logger.info(
+            f"Starting Single-Server Exporter on port {EXPORTER_PORT}. Label: {SERVER_LABEL_DEFAULT}"
+        )
+
     core.REGISTRY.register(TechnitiumCollector())
     start_http_server(EXPORTER_PORT)
     while True:

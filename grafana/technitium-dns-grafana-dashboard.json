@@ -94,7 +94,9 @@
       "id": 1,
       "panels": [],
       "title": "System & Infrastructure Health",
-      "type": "row"
+      "type": "row",
+      "repeat": "server",
+      "repeatDirection": "v"      
     },
     {
       "datasource": {
@@ -325,7 +327,9 @@
       "id": 32,
       "panels": [],
       "title": "Traffic Overview",
-      "type": "row"
+      "type": "row",
+      "repeat": "server",
+      "repeatDirection": "v"      
     },
     {
       "datasource": {

@@ -1,11 +1,12 @@
 # Technitium DNS Prometheus Exporter
 
-A lightweight [Prometheus](https://github.com/prometheus/prometheus) exporter for [Technitium DNS Server](https://technitium.com/dns/) ([github](https://github.com/TechnitiumSoftware/DnsServer)) that exposes dashboard, DNS, zone, DHCP, and top‑query statistics with accompanying dashboard for visualization in [Grafana](https://grafana.com/).
+A lightweight [Prometheus](https://github.com/prometheus/prometheus) exporter for [Technitium DNS Server](https://technitium.com/dns/) ([github](https://github.com/TechnitiumSoftware/DnsServer)) that exposes dashboard, DNS, zone, DHCP, and top‑query statistics for **single servers or clusters**. Includes an accompanying dashboard for visualization in [Grafana](https://grafana.com/).
 
 Inspired by [pihole-exporter](https://github.com/eko/pihole-exporter) and [Pi-hole Exporter Grafana dashboard](https://grafana.com/grafana/dashboards/10176-pi-hole-exporter/). After migrating from Pi-hole to Technitium, I couldn’t find any exporter that provided the metrics I needed while remaining simple and reliable — so I built one.
 
 ## Design Notes
 
+- **Cluster-Aware**: Can monitor a complete Technitium cluster from a single exporter instance by proxying requests through the primary controller.
 - All metrics represent the **current Technitium dashboard window**, not cumulative counters.
 - No artificial counters or rate conversions
 - DNS traffic metrics reflect Technitium’s current dashboard statistics window (e.g. `LastHour`), not lifetime counters. Zone and DHCP metrics reflect current server state at scrape time.
@@ -22,16 +23,39 @@ All configuration is done via environment variables.
 
 | Variable | Description | Default |
 |--------|-------------|---------|
-| `TECHNITIUM_BASE_URL` | Base URL of Technitium DNS API | `http://technitium:5380` |
-| `TECHNITIUM_VERIFY_SSL` | SSL Verification (set to "false" if using self-signed certs) | `true` |
+| `TECHNITIUM_BASE_URL` | Base URL of Technitium DNS API  (the controller if using clustering) | `http://technitium:5380` |
 | `TECHNITIUM_TOKEN` | **Required** API token | _(none)_ |
+| `TECHNITIUM_VERIFY_SSL` | SSL Verification (set to "false" if using self-signed certs) | `true` |
 | `TECHNITIUM_STATS_RANGE` | Stats window (The duration type for which valid values are: `LastHour`, `LastDay`, `LastWeek`, `LastMonth`, `LastYear`, `Custom`. ) | `LastHour` |
-| `TECHNITIUM_TOP_LIMIT` | Number of entries in Top lists | `50` |
+| `TECHNITIUM_TOP_LIMIT` | Number of entries in Top lists (Clients/Domains). | `50` |
 | `EXPORTER_PORT` | Port exporter listens on | `9105` |
-| `SERVER_LABEL` | Server label for Grafana | `technitium` |
-| `TECHNITIUM_NODE` | Cluster node (optional) | _(unset)_ |
 | `LOG_LEVEL` | Logging level | `INFO` |
+| `SERVER_LABEL` | **Single Mode:** Custom label for the server tag in Grafana. | `technitium` |
+| `TECHNITIUM_NODES` | **Cluster Mode:** Comma-separated list of node names to scrape (optional). | _(unset)_ |
 
+### Deployment Modes
+
+The exporter supports two modes of Technitium DNS operation: single server and clustering.
+
+#### Single Server Mode (default)
+
+If `TECHNITIUM_NODES` is left empty, the server label in Prometheus/Grafana will be set to the value of `SERVER_LABEL` (default: `technitium`).
+
+#### Clustering Mode
+
+If you are running a Technitium cluster, you only need one exporter instance.
+
+Point `TECHNITIUM_BASE_URL` to your primary controller.
+Set `TECHNITIUM_NODES` to a comma-separated list of the node names exactly as they appear in your Technitium panel.
+
+Example: `TECHNITIUM_NODES="primary-node,secondary-01,secondary-02"`
+
+The exporter will iterate through this list, asking the Controller to proxy requests to each node.
+Metrics will be tagged automatically: server="primary-node", server="secondary-01", etc.
+
+Note: `SERVER_LABEL` is ignored in this mode.
+
+ 
 
 ### Creating the Technitium DNS API token
 
@@ -60,7 +84,7 @@ Available images are:
 - linux/arm64
 - linux/arm/v7
 
-Example `docker-compose.yml` :
+Example `docker-compose.yml` for single Technitium instance :
 
 ```yaml
   technitium_exporter:
@@ -82,32 +106,27 @@ Example `docker-compose.yml` :
       - "9105:9105"
 ```
 
-### With local git checked out project
-
-Example `docker-compose.yml` for local git checkout:
+Example for Technitium DNS cluster:
 
 ```yaml
-services:
-
-  technitium-exporter:
-    build:
-      context: ./technitium_exporter
-      dockerfile: Dockerfile
-    container_name: technitium-exporter
+  technitium_exporter:
+    image: ghcr.io/guycalledseven/technitium-dns-prometheus-exporter:latest
+    container_name: technitium_exporter
     depends_on:
       - prometheus
     restart: unless-stopped
     environment:
-      TECHNITIUM_BASE_URL: http://technitium:5380
+      TECHNITIUM_BASE_URL: https://technitium:5380 # your controller
+      TECHNITIUM_VERIFY_SSL: false # eg. has self signed cert
       TECHNITIUM_TOKEN: your-api-token-here
-      SERVER_LABEL: technitium
+      TECHNITIUM_NODES: "primary-node,secondary-01,secondary-02" # your nodes
       TECHNITIUM_STATS_RANGE: LastHour
       TECHNITIUM_TOP_LIMIT: 50
       EXPORTER_PORT: 9105
     ports:
       - "9105:9105"
-    restart: unless-stopped
 ```
+
 
 ### Prometheus scrape config:
 
