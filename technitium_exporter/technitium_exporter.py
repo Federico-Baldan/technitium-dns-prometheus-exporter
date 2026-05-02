@@ -133,6 +133,11 @@ class TechnitiumCollector(Collector):
         g_up = GaugeMetricFamily(
             "technitium_up", "Technitium API reachable", labels=["server"]
         )
+        stats_range_info = InfoMetricFamily(
+            "technitium_stats_range",
+            "DNS Server configured stats window range",
+            labels=["server"],
+        )
 
         # Dashboard Stats Metrics
         simple_metrics = {
@@ -251,6 +256,9 @@ class TechnitiumCollector(Collector):
 
             # UP STATUS
             g_up.add_metric([server_label], 1.0 if stats else 0.0)
+            stats_range_info.add_metric(
+                [server_label], {"range": TECHNITIUM_STATS_RANGE}
+            )
 
             if stats:
                 for m_name, (key, _) in simple_metrics.items():
@@ -370,6 +378,7 @@ class TechnitiumCollector(Collector):
 
         # Yield all collected metrics
         yield g_up
+        yield stats_range_info
         for m in g_families.values():
             yield m
         yield q_metric

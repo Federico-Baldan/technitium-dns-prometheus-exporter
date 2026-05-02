@@ -220,6 +220,7 @@ Use these for:
 Exporter + API health:
 
 - `technitium_up{server}` — API reachability (0/1)
+- `technitium_stats_range_info{server, range}` — configured stats window (e.g. LastHour, LastDay)
 - `technitium_scrape_duration_seconds{server}` — exporter scrape duration
 
 Python client process metrics:
