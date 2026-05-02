@@ -6,13 +6,15 @@ Inspired by [pihole-exporter](https://github.com/eko/pihole-exporter) and [Pi-ho
 
 ## Design Notes
 
+- **Realtime and Window-based metrics**: Supports monotonic counters since server start (`Realtime Metrics`) from Technitium's v15 and window based metrics (`Traffic Overview`)
 - **Cluster-Aware**: Can monitor a complete Technitium cluster from a single exporter instance by proxying requests through the primary controller.
-- All metrics represent the **current Technitium dashboard window**, not cumulative counters.
 - No artificial counters or rate conversions
-- DNS traffic metrics reflect Technitium’s current dashboard statistics window (e.g. `LastHour`), not lifetime counters. Zone and DHCP metrics reflect current server state at scrape time.
+- DNS traffic metrics (`Traffic Overview`) reflect **Technitium’s current dashboard statistics window** (e.g. `LastHour`), not cumulative/lifetime counters. 
+- `Realtime Metrics` show lifetime counters present in Technitium DNS v15 and up.
+- API Status, Stats window, Zone and DHCP metrics reflect current server state at scrape time.
 - Logging is explicit on API failures
 - Metric cardinality is intentionally bounded
-- Suitable for home labs and small/medium installations. Use of python over golang comes from the need for a quick and easy to understand solution without the need to define specific golang structs for each Technitium DNS API output, which could change any time and break strict golang exporter.
+- Suitable for home labs and small/medium installations. Use of python over golang comes from the need for a quick and easy to understand solution without the need to define specific golang structs for each Technitium DNS API output, which could change any time and break strict typing.
 
 ---
 
