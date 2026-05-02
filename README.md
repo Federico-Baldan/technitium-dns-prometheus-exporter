@@ -142,9 +142,11 @@ scrape_configs:
 
 ## Features
 
-> ⚠️ **Important:** Due to how Technitium DNS currently exposes data - DNS traffic metrics are *window-based snapshots*, not lifetime counters.  
-> They reflect Technitium’s current dashboard statistics window (`TECHNITIUM_STATS_RANGE` — e.g., `LastHour`, `LastDay`, `LastWeek`).  
-> Values may increase or decrease over time as the window slides.
+> ⚠️ **Important:** As of version 2.0.0 the exporter provides two categories of DNS traffic metrics:
+> 1. **Window-based snapshots** (default from Technitium's `/api/dashboard/stats/get`) — reflect the selected stats window (e.g., `LastHour`). Values may increase or decrease as the window slides.
+> 2. **Lifetime counters** (from Technitium's v15.0.0 `/api/dashboard/metrics/text` newly added endpoint) — monotonic counters since server start.
+
+
 
 ### Window-based DNS Traffic Metrics
 
@@ -184,6 +186,29 @@ Use these for:
 - Blocklist/allowlist statistics
 - Cache size monitoring
 - DHCP scope usage
+
+### Lifetime Counter Metrics (Realtime)
+
+These metrics are **monotonic lifetime counters** since server start (available from Technitium DNS v15):
+
+- `technitium_realtime_uptime_seconds{server}` — seconds since server start (gauge)
+- `technitium_realtime_start_time_seconds{server}` — server start epoch in seconds (gauge)
+- `technitium_dns_realtime_queries_total{server, category}` — lifetime query counters (counter)
+
+Categories:
+```
+all           no_error         servfail
+nxdomain      refused          authoritative
+recursive     cached           blocked
+dropped       clients
+```
+
+Use these for:
+- Queries/sec throughput 
+- Cache hit ratio 
+- Block ratio 
+- True query rate by category
+- Server uptime and start time monitoring
 
 ### Exporter & Health Metrics
 
@@ -248,6 +273,15 @@ dropped
 
 - `technitium_dhcp_leases_total{server, scope, type}`
 
+### DNS Queries (Lifetime Counters — Realtime)
+
+- `technitium_dns_realtime_queries_total{server, category}`
+
+### Server Lifetime
+
+- `technitium_realtime_uptime_seconds{server}`
+- `technitium_realtime_start_time_seconds{server}`
+
 
 ---
 
@@ -258,14 +292,10 @@ dropped
 - DNSSEC / DoH / DoT breakdowns
 - Rate‑limited client metrics
 - Optional caching layer to reduce API calls?
-- Experiment with custom length window with `Custom` type [which takes start/end into consideration](https://github.com/TechnitiumSoftware/DnsServer/blob/aa892d35318f0610119ae62909050f11ef2e49c4/DnsServerCore/WebServiceDashboardApi.cs#L158):
 
-  ```
-                  if (type == DashboardStatsType.Custom)
-                  {
-                      string strStartDate = request.GetQueryOrForm("start");
-                      string strEndDate = request.GetQueryOrForm("end");
-  ```
+### Updates in v2.0.0
+- **Realtime lifetime metrics** — `technitium_dns_realtime_queries_total`, `technitium_realtime_uptime_seconds`, `technitium_realtime_start_time_seconds` from `/api/dashboard/metrics/text`
+- **Realtime Grafana panels** — QPS, cache hit %, block %, uptime, lifetime clients in a dedicated dashboard row
 
 
 ## Accompanying Grafana dashboard

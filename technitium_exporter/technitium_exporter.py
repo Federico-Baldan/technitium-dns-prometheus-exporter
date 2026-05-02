@@ -6,7 +6,7 @@ from typing import Any, Dict, Iterator, Optional, List
 import requests
 import urllib3
 from prometheus_client import core, start_http_server
-from prometheus_client.core import GaugeMetricFamily, InfoMetricFamily
+from prometheus_client.core import CounterMetricFamily, GaugeMetricFamily, InfoMetricFamily
 from prometheus_client.registry import Collector
 
 # ---------------------------------------------------------------------------
@@ -83,6 +83,44 @@ class TechnitiumCollector(Collector):
                 f"Request Failed [{node or 'local'} - {endpoint}]: {error_msg}"
             )
             return {}
+
+    def _fetch_metrics_text(self, node: Optional[str]) -> str:
+        url = f"{TECHNITIUM_BASE_URL}/api/dashboard/metrics/text"
+        params = {"token": TECHNITIUM_TOKEN}
+        if node:
+            params["node"] = node
+
+        try:
+            resp = self.session.get(url, params=params, timeout=10)
+            resp.raise_for_status()
+            return resp.text or ""
+        except Exception as e:
+            error_msg = (
+                str(e).replace(TECHNITIUM_TOKEN, "REDACTED")
+                if TECHNITIUM_TOKEN
+                else str(e)
+            )
+            logger.error(
+                f"Realtime metrics request failed [{node or 'local'}]: {error_msg}"
+            )
+            return ""
+
+    @staticmethod
+    def _parse_prometheus_text(text: str) -> Dict[str, float]:
+        data: Dict[str, float] = {}
+        if not text:
+            return data
+        for line in text.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split()
+            if len(parts) >= 2:
+                try:
+                    data[parts[0]] = float(parts[1])
+                except ValueError:
+                    pass
+        return data
 
     def collect(self) -> Iterator[core.Metric]:
         start_t = time.time()
@@ -162,6 +200,36 @@ class TechnitiumCollector(Collector):
                 "Hits for TopBlockedDomains",
                 labels=["server", "domain"],
             ),
+        }
+
+        # Realtime (lifetime) Metrics
+        realtime_uptime = GaugeMetricFamily(
+            "technitium_realtime_uptime_seconds",
+            "DNS Server uptime in seconds (lifetime)",
+            labels=["server"],
+        )
+        realtime_start_time = GaugeMetricFamily(
+            "technitium_realtime_start_time_seconds",
+            "DNS Server start time since epoch in seconds (lifetime)",
+            labels=["server"],
+        )
+        realtime_queries = CounterMetricFamily(
+            "technitium_dns_realtime_queries_total",
+            "DNS query lifetime counters by category",
+            labels=["server", "category"],
+        )
+        realtime_queries_map = {
+            "total_queries": "all",
+            "total_no_error": "no_error",
+            "total_server_failure": "servfail",
+            "total_nx_domain": "nxdomain",
+            "total_refused": "refused",
+            "total_authoritative": "authoritative",
+            "total_recursive": "recursive",
+            "total_cached": "cached",
+            "total_blocked": "blocked",
+            "total_dropped": "dropped",
+            "total_clients": "clients",
         }
 
         # Loop through every node (or the single local instance)
@@ -274,6 +342,24 @@ class TechnitiumCollector(Collector):
                 except:
                     pass
 
+            # 5. Realtime (lifetime) Metrics
+            metrics_text = self._fetch_metrics_text(node)
+            if metrics_text:
+                parsed = self._parse_prometheus_text(metrics_text)
+                if "uptime_seconds" in parsed:
+                    realtime_uptime.add_metric(
+                        [server_label], parsed["uptime_seconds"]
+                    )
+                if "start_time" in parsed:
+                    realtime_start_time.add_metric(
+                        [server_label], parsed["start_time"] / 1000.0
+                    )
+                for raw_key, cat in realtime_queries_map.items():
+                    if raw_key in parsed:
+                        realtime_queries.add_metric(
+                            [server_label, cat], parsed[raw_key]
+                        )
+
         # Yield all collected metrics
         yield g_up
         for m in g_families.values():
@@ -286,6 +372,9 @@ class TechnitiumCollector(Collector):
         yield dhcp_lease_metric
         for m in top_metrics.values():
             yield m
+        yield realtime_uptime
+        yield realtime_start_time
+        yield realtime_queries
 
         # Scrape Duration
         g_dur = GaugeMetricFamily(
