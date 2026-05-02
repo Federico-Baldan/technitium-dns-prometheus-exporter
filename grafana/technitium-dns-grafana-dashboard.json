@@ -1023,7 +1023,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Share of cached answers inside the current Technitium stats window (cached / all).",
+      "description": "Share of cached answers inside the current Technitium stats window. Formula: cached / all (denominator includes authoritative, blocked, and dropped queries).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1772,7 +1772,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Cache hit ratio over time, computed from response types (Cached vs Cached+Recursive).",
+      "description": "Cache hit ratio over time from response types. Formula: Cached / (Cached + Recursive). Measures cache effectiveness for resolver-dependent queries only \u2014 authoritative, blocked, and dropped are excluded. Differs from the 'Cache Ratio' gauge which uses cached / all queries.",
       "fieldConfig": {
         "defaults": {
           "color": {

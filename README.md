@@ -163,10 +163,14 @@ These metrics come from `/api/dashboard/stats/get` and `/api/dashboard/stats/get
 
 Use these for:
 - % blocked
-- Cache hit ratio
+- Cache hit ratio — see note below
 - Query mix breakdown
 - Error & NXDOMAIN analysis
 - Top talkers and Pi-hole-style dashboards
+
+> **Cache hit ratio formulas:** The dashboard provides two complementary metrics:
+> - **Gauge (id:20):** `cached / all` — what fraction of *all* DNS traffic was served from cache
+> - **Trend (id:34):** `Cached / (Cached + Recursive)` — how effective the cache was for resolver-dependent queries specifically (excludes authoritative, blocked, dropped)
 
 ### Snapshot-of-State Metrics (Inventory / Configuration)
 
