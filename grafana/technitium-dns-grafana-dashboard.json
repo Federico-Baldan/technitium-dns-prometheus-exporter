@@ -1463,7 +1463,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Number of zones explicitly marked as blocked in Technitium.",
+      "description": "Number of zones manually marked as blocked (distinct from imported blocklist zones).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1519,14 +1519,14 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "technitium_dns_blocked_zones{server=\"$server\"}",
+          "expr": "technitium_dns_manual_blocked_zones{server=\"$server\"}",
           "intervalFactor": 1,
           "legendFormat": "zones",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Blocked Zones",
+      "title": "Manually Blocked Zones",
       "type": "stat"
     },
     {
@@ -1534,7 +1534,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Number of zones coming from imported blocklists.",
+      "description": "Number of zones from imported blocklists (distinct from manually blocked zones).",
       "fieldConfig": {
         "defaults": {
           "color": {

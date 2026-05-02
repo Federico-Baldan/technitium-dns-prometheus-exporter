@@ -179,7 +179,7 @@ These reflect the **current state of the DNS server**, unaffected by the stats w
 - `technitium_dns_zones{server}`
 - `technitium_dns_cached_entries{server}`
 - `technitium_dns_allowed_zones{server}`
-- `technitium_dns_blocked_zones{server}`
+- `technitium_dns_manual_blocked_zones{server}`
 - `technitium_dns_allowlist_zones{server}`
 - `technitium_dns_blocklist_zones{server}`
 - `technitium_zone_info{server, zone, type, disabled, internal, serial}`
@@ -187,7 +187,7 @@ These reflect the **current state of the DNS server**, unaffected by the stats w
 
 Use these for:
 - Zone inventory and health
-- Blocklist/allowlist statistics
+- Blocklist/allowlist statistics (`_manual_blocked_zones` = user-added, `_blocklist_zones` = imported via blocklists)
 - Cache size monitoring
 - DHCP scope usage
 
@@ -269,7 +269,7 @@ dropped
 - `technitium_zone_info{server, zone, type, disabled, internal, serial}`
 - `technitium_dns_zones{server}`
 - `technitium_dns_allowed_zones{server}`
-- `technitium_dns_blocked_zones{server}`
+- `technitium_dns_manual_blocked_zones{server}`
 - `technitium_dns_allowlist_zones{server}`
 - `technitium_dns_blocklist_zones{server}`
 - `technitium_dns_cached_entries{server}`

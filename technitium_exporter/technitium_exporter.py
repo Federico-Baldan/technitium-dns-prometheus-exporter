@@ -140,7 +140,7 @@ class TechnitiumCollector(Collector):
             "technitium_dns_zones": ("zones", "Total Zones"),
             "technitium_dns_cached_entries": ("cachedEntries", "Cache Entries"),
             "technitium_dns_allowed_zones": ("allowedZones", "Allowed Zones"),
-            "technitium_dns_blocked_zones": ("blockedZones", "Blocked Zones"),
+            "technitium_dns_manual_blocked_zones": ("blockedZones", "Blocked Zones"),
             "technitium_dns_allowlist_zones": ("allowListZones", "Allow List Zones"),
             "technitium_dns_blocklist_zones": ("blockListZones", "Block List Zones"),
         }
