@@ -535,7 +535,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "100 * sum(rate(technitium_dns_realtime_queries_total{server=\"$server\",category=\"cached\"}[10m])) / sum(rate(technitium_dns_realtime_queries_total{server=\"$server\",category=\"all\"}[10m]))",
+          "expr": "100 * sum(rate(technitium_dns_realtime_queries_total{server=\"$server\",category=\"cached\"}[10m])) / clamp_min(sum(rate(technitium_dns_realtime_queries_total{server=\"$server\",category=\"all\"}[10m])), 1)",
           "intervalFactor": 1,
           "legendFormat": "%",
           "range": true,
@@ -611,7 +611,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "100 * sum(rate(technitium_dns_realtime_queries_total{server=\"$server\",category=\"blocked\"}[10m])) / sum(rate(technitium_dns_realtime_queries_total{server=\"$server\",category=\"all\"}[10m]))",
+          "expr": "100 * sum(rate(technitium_dns_realtime_queries_total{server=\"$server\",category=\"blocked\"}[10m])) / clamp_min(sum(rate(technitium_dns_realtime_queries_total{server=\"$server\",category=\"all\"}[10m])), 1)",
           "intervalFactor": 1,
           "legendFormat": "%",
           "range": true,
@@ -681,13 +681,84 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "technitium_dns_realtime_queries_total{server=\"$server\",category=\"clients\"}",
+          "expr": "technitium_realtime_clients_total{server=\"$server\"}",
           "intervalFactor": 1,
           "legendFormat": "clients",
           "refId": "A"
         }
       ],
       "title": "Lifetime Clients",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "Rate of server failures (SERVFAIL) from realtime lifetime counters.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 0.1
+              }
+            ]
+          },
+          "unit": "rps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 7
+      },
+      "id": 57,
+      "options": {
+        "colorMode": "none",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "rate(technitium_dns_realtime_queries_total{server=\"$server\",category=\"servfail\"}[10m])",
+          "intervalFactor": 1,
+          "legendFormat": "servfail/s",
+          "refId": "A"
+        }
+      ],
+      "title": "Servfail Errors",
       "type": "stat"
     },
     {
@@ -729,7 +800,7 @@
             "spanNulls": false,
             "stacking": {
               "group": "A",
-              "mode": "none"
+              "mode": "normal"
             },
             "thresholdsStyle": {
               "mode": "off"
@@ -778,7 +849,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "rate(technitium_dns_realtime_queries_total{server=\"$server\",category!~\"all|clients\"}[10m])",
+          "expr": "rate(technitium_dns_realtime_queries_total{server=\"$server\",category!=\"all\"}[10m])",
           "intervalFactor": 1,
           "legendFormat": "{{category}}",
           "refId": "A"
@@ -937,7 +1008,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "100 * sum(technitium_dns_queries_window{server=\"$server\", category=\"blocked\"}) / sum(technitium_dns_queries_window{server=\"$server\", category=\"all\"})",
+          "expr": "100 * sum(technitium_dns_queries_window{server=\"$server\", category=\"blocked\"}) / clamp_min(sum(technitium_dns_queries_window{server=\"$server\", category=\"all\"}), 1)",
           "intervalFactor": 1,
           "legendFormat": "% blocked",
           "range": true,
@@ -1013,7 +1084,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "100 * sum(technitium_dns_queries_window{server=\"$server\", category=\"cached\"}) / sum(technitium_dns_queries_window{server=\"$server\", category=\"all\"})",
+          "expr": "100 * sum(technitium_dns_queries_window{server=\"$server\", category=\"cached\"}) / clamp_min(sum(technitium_dns_queries_window{server=\"$server\", category=\"all\"}), 1)",
           "intervalFactor": 1,
           "legendFormat": "cache hit %",
           "range": true,

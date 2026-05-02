@@ -193,6 +193,7 @@ These metrics are **monotonic lifetime counters** since server start (available 
 
 - `technitium_realtime_uptime_seconds{server}` — seconds since server start (gauge)
 - `technitium_realtime_start_time_seconds{server}` — server start epoch in seconds (gauge)
+- `technitium_realtime_clients_total{server}` — total unique clients since server start (gauge)
 - `technitium_dns_realtime_queries_total{server, category}` — lifetime query counters (counter)
 
 Categories:
@@ -200,7 +201,7 @@ Categories:
 all           no_error         servfail
 nxdomain      refused          authoritative
 recursive     cached           blocked
-dropped       clients
+dropped
 ```
 
 Use these for:
@@ -281,6 +282,10 @@ dropped
 
 - `technitium_realtime_uptime_seconds{server}`
 - `technitium_realtime_start_time_seconds{server}`
+
+### Realtime Clients
+
+- `technitium_realtime_clients_total{server}`
 
 
 ---

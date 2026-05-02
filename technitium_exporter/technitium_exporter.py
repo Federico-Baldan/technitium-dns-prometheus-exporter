@@ -218,6 +218,11 @@ class TechnitiumCollector(Collector):
             "DNS query lifetime counters by category",
             labels=["server", "category"],
         )
+        realtime_clients = GaugeMetricFamily(
+            "technitium_realtime_clients_total",
+            "Total unique DNS clients seen since server start (lifetime)",
+            labels=["server"],
+        )
         realtime_queries_map = {
             "total_queries": "all",
             "total_no_error": "no_error",
@@ -229,7 +234,6 @@ class TechnitiumCollector(Collector):
             "total_cached": "cached",
             "total_blocked": "blocked",
             "total_dropped": "dropped",
-            "total_clients": "clients",
         }
 
         # Loop through every node (or the single local instance)
@@ -359,6 +363,10 @@ class TechnitiumCollector(Collector):
                         realtime_queries.add_metric(
                             [server_label, cat], parsed[raw_key]
                         )
+                if "total_clients" in parsed:
+                    realtime_clients.add_metric(
+                        [server_label], parsed["total_clients"]
+                    )
 
         # Yield all collected metrics
         yield g_up
@@ -375,6 +383,7 @@ class TechnitiumCollector(Collector):
         yield realtime_uptime
         yield realtime_start_time
         yield realtime_queries
+        yield realtime_clients
 
         # Scrape Duration
         g_dur = GaugeMetricFamily(
