@@ -229,16 +229,16 @@ class TechnitiumCollector(Collector):
             labels=["server"],
         )
         realtime_queries_map = {
-            "total_queries": "all",
-            "total_no_error": "no_error",
-            "total_server_failure": "servfail",
-            "total_nx_domain": "nxdomain",
-            "total_refused": "refused",
-            "total_authoritative": "authoritative",
-            "total_recursive": "recursive",
-            "total_cached": "cached",
-            "total_blocked": "blocked",
-            "total_dropped": "dropped",
+            "queries_total": "all",
+            "no_error_total": "no_error",
+            "server_failure_total": "servfail",
+            "nx_domain_total": "nxdomain",
+            "refused_total": "refused",
+            "authoritative_total": "authoritative",
+            "recursive_total": "recursive",
+            "cached_total": "cached",
+            "blocked_total": "blocked",
+            "dropped_total": "dropped",
         }
 
         # Loop through every node (or the single local instance)
@@ -371,9 +371,9 @@ class TechnitiumCollector(Collector):
                         realtime_queries.add_metric(
                             [server_label, cat], parsed[raw_key]
                         )
-                if "total_clients" in parsed:
+                if "clients_total" in parsed:
                     realtime_clients.add_metric(
-                        [server_label], parsed["total_clients"]
+                        [server_label], parsed["clients_total"]
                     )
 
         # Yield all collected metrics
