@@ -308,6 +308,9 @@ dropped
 - Rate‑limited client metrics
 - Optional caching layer to reduce API calls?
 
+### Updates in v2.0.1
+- Update of realtime metric names for Technitium DNS v15.1 ([changelog](https://github.com/TechnitiumSoftware/DnsServer/blob/master/CHANGELOG.md#version-151))
+
 ### Updates in v2.0.0
 - **Realtime lifetime metrics** — `technitium_dns_realtime_queries_total`, `technitium_realtime_uptime_seconds`, `technitium_realtime_start_time_seconds` from `/api/dashboard/metrics/text`
 - **Realtime Grafana panels** — QPS, cache hit %, block %, uptime, lifetime clients in a dedicated dashboard row
