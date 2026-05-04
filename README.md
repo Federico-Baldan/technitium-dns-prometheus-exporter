@@ -1,6 +1,9 @@
 # Technitium DNS Prometheus Exporter
 
-A lightweight [Prometheus](https://github.com/prometheus/prometheus) exporter for [Technitium DNS Server](https://technitium.com/dns/) ([github](https://github.com/TechnitiumSoftware/DnsServer)) that exposes dashboard, DNS, zone, DHCP, and top‑query statistics for **single servers or clusters**. Includes an accompanying dashboard for visualization in [Grafana](https://grafana.com/).
+A lightweight [Prometheus](https://github.com/prometheus/prometheus) exporter for [Technitium DNS Server](https://technitium.com/dns/) ([github](https://github.com/TechnitiumSoftware/DnsServer)) that exposes dashboard, DNS, zone, DHCP, and top‑query statistics for **single servers or clusters**. Includes an [accompanying dashboard](https://grafana.com/grafana/dashboards/24555-technitium-dns-exporter/) for visualization in [Grafana](https://grafana.com/).
+
+
+
 
 Inspired by [pihole-exporter](https://github.com/eko/pihole-exporter) and [Pi-hole Exporter Grafana dashboard](https://grafana.com/grafana/dashboards/10176-pi-hole-exporter/). After migrating from Pi-hole to Technitium, I couldn’t find any exporter that provided the metrics I needed while remaining simple and reliable — so I built one.
 
