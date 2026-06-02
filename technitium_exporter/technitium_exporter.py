@@ -296,10 +296,20 @@ class TechnitiumCollector(Collector):
                 process_chart("protocolTypeChartData", proto_metric, "protocol")
 
             # 2. Zone Health
-            zones_data = self._call_api(
-                "/api/zones/list", node, {"pageNumber": 1, "pageSize": 1000}
-            )
-            for zone in zones_data.get("zones", []):
+            all_zones: List[Dict[str, Any]] = []
+            page = 1
+            while page <= 1000:
+                zones_data = self._call_api(
+                    "/api/zones/list", node, {"pageNumber": page, "pageSize": 1000}
+                )
+                if not zones_data:
+                    break
+                all_zones.extend(zones_data.get("zones", []))
+                total_pages = int(zones_data.get("totalPages", 1) or 1)
+                if page >= total_pages:
+                    break
+                page += 1
+            for zone in all_zones:
                 z_info.add_metric(
                     [
                         server_label,
